@@ -1,0 +1,150 @@
+erDiagram
+
+    %% ═══════════════════════════════════════════════
+    %% 1. CATALOG GRAPH  (models ↔ parts via compatibility)
+    %% ═══════════════════════════════════════════════
+
+    models {
+        uuid id PK
+        text name
+        text manufacturer
+        sensor_type sensor_type
+        text description
+        text image_url
+    }
+
+    parts {
+        uuid id PK
+        text sku UK
+        text name
+        text manufacturer
+        sensor_type sensor_type
+        int base_price_cents
+        int stock_quantity
+        int lead_time_days
+        int safety_stock
+        text uom
+    }
+
+    compatibility {
+        uuid id PK
+        uuid model_id FK
+        uuid part_id FK
+        fit_type fit_type "exact | equivalent | aftermarket"
+        text notes
+    }
+
+    models ||--o{ compatibility : "has compatible"
+    parts  ||--o{ compatibility : "fits into"
+
+    %% ═══════════════════════════════════════════════
+    %% 2. PRICING CHAIN  (companies → contracts → contract_tiers)
+    %% ═══════════════════════════════════════════════
+
+    companies {
+        uuid id PK
+        text name
+        text billing_line1
+        text billing_city
+        text billing_state
+        text billing_postal
+        text billing_country
+    }
+
+    contracts {
+        uuid id PK
+        uuid company_id FK
+        contract_tier_name tier "standard | silver | gold | platinum"
+        numeric discount_percent "base tier discount"
+        timestamptz starts_at
+        timestamptz expires_at
+        bool is_active
+    }
+
+    contract_tiers {
+        uuid id PK
+        uuid contract_id FK
+        int min_quantity "volume break threshold"
+        numeric additional_discount_percent "stacks on base"
+    }
+
+    companies  ||--o{ contracts      : "negotiates"
+    contracts  ||--o{ contract_tiers : "volume breaks"
+
+    %% ═══════════════════════════════════════════════
+    %% 3. ORDER CHAIN  (orders → order_lines → parts)
+    %% ═══════════════════════════════════════════════
+
+    orders {
+        uuid id PK
+        text order_number UK
+        uuid company_id FK
+        uuid user_id FK
+        order_status status "pending→confirmed→picking→packed→shipped→delivered→fulfilled"
+        sla_tier sla_tier
+        timestamptz sla_deadline
+        sla_status sla_status
+        int subtotal_cents
+        int discount_cents
+        int shipping_cents
+        int tax_cents
+        int total_cents
+        shipping_method shipping_method
+        payment_method payment_method
+    }
+
+    order_lines {
+        uuid id PK
+        uuid order_id FK
+        uuid part_id FK
+        int quantity
+        int unit_price_cents
+        int line_total_cents
+        numeric discount_percent
+        order_line_status status "per-line for partial fulfillment"
+    }
+
+    companies   ||--o{ orders      : "places"
+    orders      ||--o{ order_lines : "contains"
+    parts       ||--o{ order_lines : "referenced by"
+
+    %% ═══════════════════════════════════════════════
+    %% 4. SLA CHAIN  (orders → sla_events audit log)
+    %% ═══════════════════════════════════════════════
+
+    sla_events {
+        uuid id PK
+        uuid order_id FK
+        sla_status previous_status
+        sla_status new_status "on_track→warning→breach→breached | →fulfilled"
+        text triggered_by "system | manual"
+        text note
+        timestamptz occurred_at
+    }
+
+    orders ||--o{ sla_events : "SLA audit trail"
+
+    %% ═══════════════════════════════════════════════
+    %% 5. SUPPLY CHAIN  (suppliers → supplier_parts → parts)
+    %% ═══════════════════════════════════════════════
+
+    suppliers {
+        uuid id PK
+        text name
+        text contact_email
+        text contact_phone
+        int lead_time_days
+        bool is_active
+    }
+
+    supplier_parts {
+        uuid id PK
+        uuid supplier_id FK
+        uuid part_id FK
+        int cost_cents
+        int lead_time_days
+        bool is_primary "one primary per part"
+    }
+
+    suppliers ||--o{ supplier_parts : "provides"
+    parts     ||--o{ supplier_parts : "sourced from"

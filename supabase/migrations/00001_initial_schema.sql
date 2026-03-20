@@ -411,13 +411,13 @@ create index idx_quote_lines_quote on quote_lines(quote_id);
 -- ═══════════════════════════════════════════════════════════════
 
 -- Helper: get the current user's role from their profile
-create or replace function auth.user_role()
+create or replace function public.user_role()
 returns user_role as $$
   select role from user_profiles where id = auth.uid();
 $$ language sql security definer stable;
 
 -- Helper: get the current user's company_id
-create or replace function auth.user_company_id()
+create or replace function public.user_company_id()
 returns uuid as $$
   select company_id from user_profiles where id = auth.uid();
 $$ language sql security definer stable;
@@ -446,96 +446,96 @@ create policy "models_read_all" on models
   for select using (true);
 
 create policy "models_admin_write" on models
-  for all using (auth.user_role() in ('admin', 'ops'));
+  for all using (public.user_role() in ('admin', 'ops'));
 
 create policy "parts_read_all" on parts
   for select using (true);
 
 create policy "parts_admin_write" on parts
-  for all using (auth.user_role() in ('admin', 'ops'));
+  for all using (public.user_role() in ('admin', 'ops'));
 
 create policy "compat_read_all" on compatibility
   for select using (true);
 
 create policy "compat_admin_write" on compatibility
-  for all using (auth.user_role() in ('admin', 'ops'));
+  for all using (public.user_role() in ('admin', 'ops'));
 
 -- ─── User profiles: see your own, admins see all ───
 
 create policy "profiles_read_own" on user_profiles
   for select using (
     id = auth.uid()
-    or auth.user_role() in ('admin', 'ops')
+    or public.user_role() in ('admin', 'ops')
   );
 
 create policy "profiles_update_own" on user_profiles
   for update using (id = auth.uid());
 
 create policy "profiles_admin_all" on user_profiles
-  for all using (auth.user_role() = 'admin');
+  for all using (public.user_role() = 'admin');
 
 -- ─── Companies: see your own company, admins see all ───
 
 create policy "companies_read" on companies
   for select using (
-    id = auth.user_company_id()
-    or auth.user_role() in ('admin', 'ops')
+    id = public.user_company_id()
+    or public.user_role() in ('admin', 'ops')
   );
 
 create policy "companies_admin_write" on companies
-  for all using (auth.user_role() = 'admin');
+  for all using (public.user_role() = 'admin');
 
 -- ─── Contracts: see your company's, admins see all ───
 
 create policy "contracts_read" on contracts
   for select using (
-    company_id = auth.user_company_id()
-    or auth.user_role() in ('admin', 'ops')
+    company_id = public.user_company_id()
+    or public.user_role() in ('admin', 'ops')
   );
 
 create policy "contracts_admin_write" on contracts
-  for all using (auth.user_role() = 'admin');
+  for all using (public.user_role() = 'admin');
 
 create policy "contract_tiers_read" on contract_tiers
   for select using (
     exists (
       select 1 from contracts
       where contracts.id = contract_tiers.contract_id
-      and (contracts.company_id = auth.user_company_id() or auth.user_role() in ('admin', 'ops'))
+      and (contracts.company_id = public.user_company_id() or public.user_role() in ('admin', 'ops'))
     )
   );
 
 create policy "contract_tiers_admin_write" on contract_tiers
-  for all using (auth.user_role() = 'admin');
+  for all using (public.user_role() = 'admin');
 
 -- ─── Orders: see your company's, admins/ops see all ───
 
 create policy "orders_read" on orders
   for select using (
-    company_id = auth.user_company_id()
-    or auth.user_role() in ('admin', 'ops')
+    company_id = public.user_company_id()
+    or public.user_role() in ('admin', 'ops')
   );
 
 create policy "orders_buyer_insert" on orders
   for insert with check (
-    company_id = auth.user_company_id()
+    company_id = public.user_company_id()
     and user_id = auth.uid()
   );
 
 create policy "orders_admin_write" on orders
-  for all using (auth.user_role() in ('admin', 'ops'));
+  for all using (public.user_role() in ('admin', 'ops'));
 
 create policy "order_lines_read" on order_lines
   for select using (
     exists (
       select 1 from orders
       where orders.id = order_lines.order_id
-      and (orders.company_id = auth.user_company_id() or auth.user_role() in ('admin', 'ops'))
+      and (orders.company_id = public.user_company_id() or public.user_role() in ('admin', 'ops'))
     )
   );
 
 create policy "order_lines_admin_write" on order_lines
-  for all using (auth.user_role() in ('admin', 'ops'));
+  for all using (public.user_role() in ('admin', 'ops'));
 
 -- ─── SLA events: follow order visibility ───
 
@@ -544,12 +544,12 @@ create policy "sla_events_read" on sla_events
     exists (
       select 1 from orders
       where orders.id = sla_events.order_id
-      and (orders.company_id = auth.user_company_id() or auth.user_role() in ('admin', 'ops'))
+      and (orders.company_id = public.user_company_id() or public.user_role() in ('admin', 'ops'))
     )
   );
 
 create policy "sla_events_system_write" on sla_events
-  for all using (auth.user_role() in ('admin', 'ops'));
+  for all using (public.user_role() in ('admin', 'ops'));
 
 -- ─── Shipments: follow order visibility ───
 
@@ -558,55 +558,55 @@ create policy "shipments_read" on shipments
     exists (
       select 1 from orders
       where orders.id = shipments.order_id
-      and (orders.company_id = auth.user_company_id() or auth.user_role() in ('admin', 'ops'))
+      and (orders.company_id = public.user_company_id() or public.user_role() in ('admin', 'ops'))
     )
   );
 
 create policy "shipments_admin_write" on shipments
-  for all using (auth.user_role() in ('admin', 'ops'));
+  for all using (public.user_role() in ('admin', 'ops'));
 
 -- ─── Suppliers: admin/ops only ───
 
 create policy "suppliers_admin_read" on suppliers
-  for select using (auth.user_role() in ('admin', 'ops'));
+  for select using (public.user_role() in ('admin', 'ops'));
 
 create policy "suppliers_admin_write" on suppliers
-  for all using (auth.user_role() = 'admin');
+  for all using (public.user_role() = 'admin');
 
 create policy "supplier_parts_admin_read" on supplier_parts
-  for select using (auth.user_role() in ('admin', 'ops'));
+  for select using (public.user_role() in ('admin', 'ops'));
 
 create policy "supplier_parts_admin_write" on supplier_parts
-  for all using (auth.user_role() = 'admin');
+  for all using (public.user_role() = 'admin');
 
 -- ─── Quotes: see your company's, admins see all ───
 
 create policy "quotes_read" on quotes
   for select using (
-    company_id = auth.user_company_id()
-    or auth.user_role() in ('admin', 'ops')
+    company_id = public.user_company_id()
+    or public.user_role() in ('admin', 'ops')
   );
 
 create policy "quotes_buyer_insert" on quotes
   for insert with check (
-    company_id = auth.user_company_id()
+    company_id = public.user_company_id()
     and user_id = auth.uid()
   );
 
 create policy "quotes_admin_write" on quotes
-  for all using (auth.user_role() in ('admin', 'ops'));
+  for all using (public.user_role() in ('admin', 'ops'));
 
 create policy "quote_lines_read" on quote_lines
   for select using (
     exists (
       select 1 from quotes
       where quotes.id = quote_lines.quote_id
-      and (quotes.company_id = auth.user_company_id() or auth.user_role() in ('admin', 'ops'))
+      and (quotes.company_id = public.user_company_id() or public.user_role() in ('admin', 'ops'))
     )
   );
 
 create policy "quote_lines_admin_write" on quote_lines
-  for all using (auth.user_role() in ('admin', 'ops'));
+  for all using (public.user_role() in ('admin', 'ops'));
 
 -- ═══════════════════════════════════════════════════════════════
 -- Enable Realtime for SLA-critical tables

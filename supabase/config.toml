@@ -1,5 +1,4 @@
-[project]
-id = "sensor-spares-portal"
+
 
 [api]
 enabled = true

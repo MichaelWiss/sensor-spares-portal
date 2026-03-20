@@ -22,6 +22,9 @@ Thumbs.db
 # IDE
 .vscode/
 .idea/
+
+# Agent rules
+AGENTS.md
 *.swp
 *.swo
 
@@ -29,3 +32,6 @@ Thumbs.db
 *.log
 npm-debug.log*
 pnpm-debug.log*
+
+#plan
+plan.md
