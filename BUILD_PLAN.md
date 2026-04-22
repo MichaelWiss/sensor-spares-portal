@@ -474,11 +474,11 @@ This is a **building tool**, not a feature list. Every cell is a single, atomic 
 **Outputs:** Nothing new.
 
 **Verify checklist:**
-- [ ] All tests pass
-- [ ] `pnpm --filter @repo/engine-parts-graph build` compiles to `dist/`
-- [ ] ST800 diaphragm appears in both `exact` (for ST800) and `equivalent` (for 3051) groups
-- [ ] In-stock parts always sort before out-of-stock within the same fit type
-- [ ] `rankParts` produces a single list with exact first
+- [x] All tests pass
+- [x] `pnpm --filter @repo/engine-parts-graph build` compiles to `dist/`
+- [x] ST800 diaphragm appears in both `exact` (for ST800) and `equivalent` (for 3051) groups
+- [x] In-stock parts always sort before out-of-stock within the same fit type
+- [x] `rankParts` produces a single list with exact first
 - [x] All functions are pure — no DB calls, no side effects
 
 **Status:** `[x]`
@@ -487,6 +487,10 @@ This is a **building tool**, not a feature list. Every cell is a single, atomic 
 
 ## Phase 5 — Integration Adapters
 *Thin TypeScript wrappers around external services. No business logic — each adapter translates between the external API and the domain types from `@repo/shared`.*
+
+> **Adapter build order:** Supabase → ERPNext → Typesense → Shippo → Resend → Stripe → PostHog. Each adapter can be built independently once Cell 5.1 is complete.
+
+> **Boxwise WMS:** Deferred. The bin-location and fast-pick-zone workflow requires warehouse order-flow context that does not exist until Phase 7. It will be added as a dedicated cell when Phase 7 is broken down.
 
 ---
 
@@ -518,23 +522,31 @@ This is a **building tool**, not a feature list. Every cell is a single, atomic 
 
 **Verify:** `createBrowserClient().from('parts').select('sku').limit(1)` returns a row. `createServerClient().from('suppliers').select('name').limit(1)` returns a row (service role bypasses RLS). `createBrowserClient().from('suppliers').select('name').limit(1)` returns empty (RLS blocks buyer).
 
-**Status:** `[ ]`
+**Status:** `[x]`
 
 ---
 
-### Cell 5.3 — ERPNext Adapter
-**What:** Create `integrations/erpnext/` — fetch stock quantities and lead times for parts.
+### Cell 5.3 — ERPNext Adapter (mock-first)
+**What:** Create `integrations/erpnext/` — fetch stock quantities and lead times for parts. Built mock-first so local development and tests require no external credentials. A live ERPNext HTTP transport is included as an optional second implementation behind the same interface.
+
+**Stack note:** ERPNext is open-source (free). For local dev, a fixture-backed mock transport is the default. A real ERPNext instance (self-hosted or Frappe Cloud) is only needed for live verification, which is deferred.
 
 **Inputs:** Cell 5.2 complete
 
 **Outputs:**
-- `integrations/erpnext/src/client.ts` — authenticated HTTP client using `ERPNEXT_URL`, `ERPNEXT_API_KEY`, `ERPNEXT_API_SECRET`
-- `integrations/erpnext/src/inventory.ts` — `fetchStockLevels(skus: string[])` → `{ sku, stockQuantity, leadTimeDays }[]`
+- `integrations/erpnext/src/errors.ts` — typed error classes: `ERPNextConfigError`, `ERPNextAuthError`, `ERPNextTransportError`, `ERPNextParseError`
+- `integrations/erpnext/src/inventory.ts` — `fetchStockLevels(skus: string[])` → `StockLevel[]`; `InventoryTransport` interface; `mockTransport` fixture implementation seeded from seed.sql data; `setTransport()` for test overriding
+- `integrations/erpnext/src/client.ts` — `createERPNextClient(config?)` — live ERPNext HTTP transport implementing `InventoryTransport`; validates `ERPNEXT_URL`, `ERPNEXT_API_KEY`, `ERPNEXT_API_SECRET`; queries the `Bin` DocType
 - `integrations/erpnext/src/index.ts` — barrel export
+- `integrations/erpnext/src/__tests__/inventory.test.ts` — unit tests against mock transport
+- `integrations/erpnext/src/__tests__/client.test.ts` — config validation tests (no live HTTP)
+- `integrations/erpnext/src/scripts/smoke.ts` — local smoke check using mock transport (no credentials needed)
 
-**Verify:** `fetchStockLevels(["HW-ST800-DIAP"])` returns a result with `stockQuantity` and `leadTimeDays`. Auth errors (bad key) throw a typed error.
+**Verify (local, no credentials):** `fetchStockLevels(["HW-ST800-DIAP"])` returns `{ sku, stockQuantity, leadTimeDays }`. `fetchStockLevels([])` returns `[]`. Unknown SKU is omitted. `createERPNextClient({})` throws `ERPNextConfigError`. All pass via `pnpm --filter @repo/erpnext-client test`.
 
-**Status:** `[ ]`
+**Verify (live, deferred):** When real credentials are available, `setTransport(createERPNextClient())` then `fetchStockLevels(["HW-ST800-DIAP"])` returns live ERPNext data.
+
+**Status:** `[x]`
 
 ---
 
@@ -607,10 +619,27 @@ This is a **building tool**, not a feature list. Every cell is a single, atomic 
 
 ---
 
-### Cell 5.8 — Verify Integration Adapters
+### Cell 5.8 — Stripe Adapter
+**What:** Create `integrations/stripe/` — webhook signature validation and typed payment helpers.
+
+**Inputs:** Cell 5.2 complete, `stripe` npm package installed
+
+**Outputs:**
+- `integrations/stripe/package.json` — name `@repo/stripe-client`
+- `integrations/stripe/src/client.ts` — Stripe SDK instance using `STRIPE_SECRET_KEY`
+- `integrations/stripe/src/webhook.ts` — `constructWebhookEvent(payload, signature, secret)` → `Stripe.Event` — validates the signature and returns a typed event; throws on invalid signature
+- `integrations/stripe/src/index.ts` — barrel export
+
+**Verify:** `constructWebhookEvent` with a valid test payload and matching secret returns a typed `Stripe.Event`. An invalid signature throws a typed `WebhookValidationError`. `STRIPE_SECRET_KEY` is never exported or logged.
+
+**Status:** `[ ]`
+
+---
+
+### Cell 5.9 — Verify Integration Adapters
 **What:** End-to-end check of all adapters.
 
-**Inputs:** Cells 5.1–5.7 complete
+**Inputs:** Cells 5.1–5.8 complete
 
 **Outputs:** Nothing new.
 
@@ -621,6 +650,7 @@ This is a **building tool**, not a feature list. Every cell is a single, atomic 
 - [ ] Typesense search returns relevant parts
 - [ ] Shippo rates returned for a TX → TX shipment
 - [ ] Resend sends an email to a test address
+- [ ] Stripe webhook signature validates correctly; invalid signature throws
 - [ ] PostHog event visible in dashboard
 - [ ] No API keys or secrets appear in any source file
 
@@ -709,8 +739,25 @@ This is a **building tool**, not a feature list. Every cell is a single, atomic 
 
 ---
 
-## Phase 7 — Next.js Storefront (`apps/web`)
-*The buyer-facing storefront: catalog, compatibility lookup, checkout, order tracking. Planned scope — cells will be broken down further when this phase begins.*
+## Phase 7 — Medusa OMS + Next.js Storefront
+*Two apps built in parallel once the integration layer exists. `apps/medusa` is the headless order management backend; `apps/web` is the buyer-facing Next.js storefront. Detailed cells for each will be broken down further when this phase begins.*
+
+---
+
+### Cell 7.0 — Scaffold `apps/medusa`
+**What:** Create the Medusa.js headless OMS backend app.
+
+**Inputs:** Phase 6 complete
+
+**Outputs:**
+- `apps/medusa/` — Medusa.js project, TypeScript, connected to local Postgres
+- `apps/medusa/medusa-config.ts` — Supabase DB URL, Stripe plugin, Shippo plugin
+- `apps/medusa/package.json` — workspace app, deps on `@repo/shared`, `@repo/engine-pricing`
+- Admin panel accessible at `http://localhost:9000/app`
+
+**Verify:** `pnpm --filter @repo/medusa dev` → Medusa API responds at `http://localhost:9000/health`. Admin panel loads. Products endpoint returns an empty catalog.
+
+**Status:** `[ ]`
 
 ---
 
@@ -844,25 +891,27 @@ This is a **building tool**, not a feature list. Every cell is a single, atomic 
 | 3.5 | Barrel Export | SLA Engine | `[x]` |
 | 3.6 | SLA Engine Tests | SLA Engine | `[x]` |
 | 3.7 | Verify SLA Engine | SLA Engine | `[x]` |
-| 4.1 | Scaffold engine-parts-graph | Parts Graph | `[ ]` |
-| 4.2 | Compatible Parts Lookup | Parts Graph | `[ ]` |
-| 4.3 | Compatible Models Reverse Lookup | Parts Graph | `[ ]` |
-| 4.4 | Flat Ranking | Parts Graph | `[ ]` |
-| 4.5 | Filter Helpers | Parts Graph | `[ ]` |
-| 4.6 | Barrel Export and Tests | Parts Graph | `[ ]` |
-| 4.7 | Verify Parts Graph Engine | Parts Graph | `[ ]` |
-| 5.1 | Environment Variables | Integrations | `[ ]` |
-| 5.2 | Supabase Client Adapter | Integrations | `[ ]` |
-| 5.3 | ERPNext Adapter | Integrations | `[ ]` |
+| 4.1 | Scaffold engine-parts-graph | Parts Graph | `[x]` |
+| 4.2 | Compatible Parts Lookup | Parts Graph | `[x]` |
+| 4.3 | Compatible Models Reverse Lookup | Parts Graph | `[x]` |
+| 4.4 | Flat Ranking | Parts Graph | `[x]` |
+| 4.5 | Filter Helpers | Parts Graph | `[x]` |
+| 4.6 | Barrel Export and Tests | Parts Graph | `[x]` |
+| 4.7 | Verify Parts Graph Engine | Parts Graph | `[x]` |
+| 5.1 | Environment Variables | Integrations | `[x]` |
+| 5.2 | Supabase Client Adapter | Integrations | `[x]` |
+| 5.3 | ERPNext Adapter | Integrations | `[x]` |
 | 5.4 | Typesense Adapter | Integrations | `[ ]` |
 | 5.5 | Shippo Adapter | Integrations | `[ ]` |
 | 5.6 | Resend Adapter | Integrations | `[ ]` |
 | 5.7 | PostHog Adapter | Integrations | `[ ]` |
-| 5.8 | Verify Integration Adapters | Integrations | `[ ]` |
+| 5.8 | Stripe Adapter | Integrations | `[ ]` |
+| 5.9 | Verify Integration Adapters | Integrations | `[ ]` |
 | 6.1 | inventory-sync Edge Function | Edge Functions | `[ ]` |
 | 6.2 | order-webhook Edge Function | Edge Functions | `[ ]` |
 | 6.3 | sla-check Edge Function | Edge Functions | `[ ]` |
 | 6.4 | Verify Edge Functions | Edge Functions | `[ ]` |
+| 7.0 | Scaffold apps/medusa | Medusa OMS | `[ ]` |
 | 7.1 | Scaffold apps/web | Storefront | `[ ]` |
 | 7.2 | Model Catalog Page | Storefront | `[ ]` |
 | 7.3 | Model Detail & Compatibility Page | Storefront | `[ ]` |
@@ -870,4 +919,4 @@ This is a **building tool**, not a feature list. Every cell is a single, atomic 
 | 7.5 | Order Tracking Page | Storefront | `[ ]` |
 | 7.6 | Verify Storefront | Storefront | `[ ]` |
 
-**Total: 44 cells across 7 phases**
+**Total: 47 cells across 7 phases**
