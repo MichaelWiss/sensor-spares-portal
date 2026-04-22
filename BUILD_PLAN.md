@@ -550,7 +550,7 @@ This is a **building tool**, not a feature list. Every cell is a single, atomic 
 
 ---
 
-### Cell 5.4 — Typesense Adapter
+### Cell 5.4 — Typesense Adapter ✅
 **What:** Create `integrations/typesense/` — index parts and models, expose a search function.
 
 **Inputs:** Cell 5.2 complete, `typesense` npm package installed
@@ -901,7 +901,7 @@ This is a **building tool**, not a feature list. Every cell is a single, atomic 
 | 5.1 | Environment Variables | Integrations | `[x]` |
 | 5.2 | Supabase Client Adapter | Integrations | `[x]` |
 | 5.3 | ERPNext Adapter | Integrations | `[x]` |
-| 5.4 | Typesense Adapter | Integrations | `[ ]` |
+| 5.4 | Typesense Adapter | Integrations | `[x]` |
 | 5.5 | Shippo Adapter | Integrations | `[ ]` |
 | 5.6 | Resend Adapter | Integrations | `[ ]` |
 | 5.7 | PostHog Adapter | Integrations | `[ ]` |
